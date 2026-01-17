@@ -1,0 +1,46 @@
+# General / OS / IDE
+.DS_Store
+.vscode/
+.idea/
+.fleet/
+*.swp
+*.swo
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+*.egg-info/
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# Build artifacts
+dist/
+build/
+*.spec
+
+# Env config
+.env
+.env.*
+!.env.example
+
+# Project Specific
+logs/
+.setup_complete
+
+# User generated data
+*.csv
+# Keep example CSVs if they exist in specifics folders, but generally ignore output
+!test_data/*.csv

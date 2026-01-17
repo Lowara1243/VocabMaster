@@ -1,0 +1,6 @@
+The following text is a corrupted JSON object that was returned from an API. Please fix it and return only the corrected, valid JSON object. Do not provide any explanation or surrounding text. Just the JSON.
+
+Corrupted JSON:
+```
+{broken_output}
+```

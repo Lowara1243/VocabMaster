@@ -1,0 +1,14 @@
+{context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
+- "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form).
+- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
+- "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
+- "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
+
+Important rules:
+- The provided word/phrase is in {source_lang}. You MUST treat it as a {source_lang} word/phrase. Do not guess the language.
+- If word/phrase doesn't exist or you're uncertain: set transcription to "N/A"
+- For multi-word phrases like "give up", highlight the entire phrase: #give up#
+- Provide up to 3 examples when possible
+- Return ONLY valid JSON, no markdown blocks, no additional text
+
+Example: {{"infinitive": "obnoxious", "transcription": "[əbˈnɒkʃəs]", "translations": ["неприятный", "отвратительный"], "examples": [{{"source": "His #obnoxious# behavior annoyed everyone.", "translation": "Его #отвратительное# поведение раздражало всех."}}, {{"source": "She found his jokes #obnoxious#.", "translation": "Она находила его шутки #отвратительными#."}}]}}
