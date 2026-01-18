@@ -31,6 +31,16 @@ describe('Utility Functions', () => {
             expect(parsed.examples[0].source).toBe('Zwei Euro, <strong>macht zusammen</strong> пять.');
         });
 
+        it('should correctly parse fields that are quoted by the backend', () => {
+            // Case derived from user report: "hallo";"[ˈhalo]"...
+            const serverLine = '"hallo";"[ˈhalo]";"привет, здравствуйте, алло";"#Hallo#, wie geht es dir?";"#Привет#, как дела?";"Sie sagte #hallo# zu mir.";"Она сказала мне #привет#.";"Am Telefon sagte ich #Hallo#.";"По телефону я сказал #алло#."';
+            const parsed = parseCsvLine(serverLine);
+            expect(parsed.word).toBe('hallo'); // Should NOT be '"hallo"'
+            expect(parsed.transcription).toBe('[ˈhalo]'); // Should NOT be '"[ˈhalo]"'
+            expect(parsed.translation).toBe('привет, здравствуйте, алло');
+            expect(parsed.examples[0].source).toBe('<strong>Hallo</strong>, wie geht es dir?');
+        });
+
         it('should create a CSV line correctly', () => {
             const fields = ['word', 'trans', 'IPA', 'source', 'target'];
             const line = createCsvLine(fields);

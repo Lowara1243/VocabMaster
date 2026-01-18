@@ -67,6 +67,35 @@ function App() {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      const processLine = (line) => {
+        if (!line.trim()) return;
+        const parsedResult = parseCsvLine(line);
+        if (parsedResult) {
+          setResults(prevResults => {
+            const updatedResults = prevResults.map(r => {
+              if (r.originalWord === parsedResult.originalWord) {
+                if (parsedResult.transcription === '[error]') {
+                  return { ...r, status: 'error', error: parsedResult.word };
+                }
+                const isNotFound = parsedResult.transcription === 'N/A';
+                if (!isNotFound) {
+                  setHistory(prevHistory => {
+                    const historyWords = new Set(prevHistory.map(item => item.word));
+                    if (!historyWords.has(parsedResult.word)) {
+                      return [parsedResult, ...prevHistory];
+                    }
+                    return prevHistory;
+                  });
+                }
+                return { ...parsedResult, status: isNotFound ? 'not_found' : 'completed' };
+              }
+              return r;
+            });
+            return updatedResults;
+          });
+        }
+      };
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -76,34 +105,13 @@ function App() {
         buffer = lines.pop(); // Keep incomplete line in buffer
 
         for (const line of lines) {
-          if (line.trim()) {
-            const parsedResult = parseCsvLine(line);
-            if (parsedResult) {
-              setResults(prevResults => {
-                const updatedResults = prevResults.map(r => {
-                  if (r.originalWord === parsedResult.originalWord) {
-                    if (parsedResult.transcription === '[error]') {
-                      return { ...r, status: 'error', error: parsedResult.word };
-                    }
-                    const isNotFound = parsedResult.transcription === 'N/A';
-                    if (!isNotFound) {
-                      setHistory(prevHistory => {
-                        const historyWords = new Set(prevHistory.map(item => item.word));
-                        if (!historyWords.has(parsedResult.word)) {
-                          return [parsedResult, ...prevHistory];
-                        }
-                        return prevHistory;
-                      });
-                    }
-                    return { ...parsedResult, status: isNotFound ? 'not_found' : 'completed' };
-                  }
-                  return r;
-                });
-                return updatedResults;
-              });
-            }
-          }
+          processLine(line);
         }
+      }
+
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        processLine(buffer);
       }
     } catch (error) {
       console.error("Processing error:", error);
