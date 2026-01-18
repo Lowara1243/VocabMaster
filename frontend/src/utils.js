@@ -3,6 +3,41 @@
  */
 
 /**
+ * Split text by comma, respecting brackets [].
+ * Commas inside brackets are treated as part of the text, not separators.
+ */
+export function splitByCommaRespectingBrackets(text) {
+  if (!text) return [];
+
+  const parts = [];
+  let current = '';
+  let bracketDepth = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (char === '[') {
+      bracketDepth++;
+      current += char;
+    } else if (char === ']') {
+      if (bracketDepth > 0) bracketDepth--;
+      current += char;
+    } else if (char === ',' && bracketDepth === 0) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts.filter(p => p.length > 0);
+}
+
+/**
  * Format example by converting #word# to <strong>word</strong>
  */
 export function formatExample(example) {
@@ -66,8 +101,18 @@ export function parseCsvLine(line) {
   // Add last field
   fields.push(field);
 
-  // The first field is the raw word, the second is now the infinitive/parsed word
-  const originalWord = fields[0] || '';
+  let originalWord = fields[0] || '';
+  let displayWord = fields[0] || '';
+
+  // Check for hidden ID field at the end
+  // Standard format: Word;Trans;Trn;Ex1;Tr1... (3 + 2N fields = Odd)
+  // With ID: Word;Trans;Trn;Ex1;Tr1...;ID (3 + 2N + 1 fields = Even)
+  if (fields.length >= 4 && fields.length % 2 === 0) {
+    originalWord = fields[fields.length - 1];
+    displayWord = fields[0];
+    // Remove ID from fields to avoid processing it as an example
+    fields.pop();
+  }
 
   // Handle error case
   if (fields.length >= 3 && fields[2] === '[error]') {
@@ -98,10 +143,10 @@ export function parseCsvLine(line) {
     }
 
     return {
-      word: fields[0] || '',                // The base form (e.g. "liegen")
+      word: displayWord,                    // The base form (e.g. "liegen")
       transcription: fields[1] || '',       // IPA
       translation: fields[2] || '',         // Translations
-      originalWord: fields[0] || '',        // Use same as word for matching
+      originalWord: originalWord,           // Use hidden ID if present, else same as word
       examples: examples,
       raw: line,
     };

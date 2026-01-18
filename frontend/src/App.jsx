@@ -3,7 +3,7 @@ import WordForm from './components/WordForm.jsx';
 import Results from './components/Results.jsx';
 import History from './components/History.jsx';
 import { languages } from './components/languages';
-import { parseCsvLine, createCsvLine, unformatExample } from './utils';
+import { parseCsvLine, createCsvLine, unformatExample, splitByCommaRespectingBrackets } from './utils';
 
 const API_URL = import.meta.env.VITE_APP_API_URL || 'http://127.0.0.1:8000/process-words';
 
@@ -38,7 +38,8 @@ function App() {
     e.preventDefault();
     if (!text.trim()) return;
 
-    const words = Array.from(new Set(text.split(',').map(w => w.trim().toLowerCase()).filter(w => w)));
+    // Use smart splitting that respects brackets
+    const words = Array.from(new Set(splitByCommaRespectingBrackets(text).map(w => w.trim().toLowerCase()).filter(w => w)));
     const newResults = words.map(word => ({
       originalWord: word,
       word: word,
@@ -197,4 +198,3 @@ function App() {
 }
 
 export default App;
-

@@ -177,9 +177,12 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
         examples_str = ";".join(example_fields)
 
         # Format as CSV line for ReWord:
-        # 1. infinitive, 2. transcription, 3. translations, 4. examples...
+        # 1. infinitive (DISPLAY), 2. transcription, 3. translations, 4. examples... 
+        # LAST FIELD: raw_word (ID for matching)
+        # Frontend expects ID to be lowercased and trimmed (but NOT whitespace-normalized like clean_csv_field does)
+        id_raw = raw_word.strip().lower().replace('"', '""')
         return (
-            f'"{infinitive}";"{transcription}";"{translations}";{examples_str}'
+            f'"{infinitive}";"{transcription}";"{translations}";{examples_str};"{id_raw}"'
         )
 
     except (json.JSONDecodeError, ValueError, KeyError, IndexError) as e:
@@ -190,8 +193,15 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
 def format_error_response(raw_word: str, error_message: str) -> str:
     """Format error as CSV line."""
     error_message = error_message.replace('"', '""')
-    # Use raw_word as the first field
-    return f'"{raw_word}";"{error_message}";"[error]";"";""'
+    # Use raw_word as the first field, ensuring quotes are escaped
+    clean_raw_word = raw_word.replace('"', '""')
+    display_word = clean_raw_word
+    
+    # ID must be lowercased to match frontend expectation
+    id_raw = raw_word.strip().lower().replace('"', '""')
+    
+    # Format: Display;ErrorMsg;[error];Example1(empty);Example2(empty);ID
+    return f'"{display_word}";"{error_message}";"[error]";"";"";"{id_raw}"'
 
 
 async def fix_json_with_llm(broken_output: str, original_word: str) -> str | None:
@@ -388,11 +398,43 @@ def parse_word_with_context(text: str) -> tuple[str, str | None]:
         return word.strip(), context
 
 
+def split_text_respecting_brackets(text: str) -> list[str]:
+    """
+    Split text by comma, respecting brackets [].
+    Commas inside brackets are treated as part of the text, not separators.
+    """
+    if not text:
+        return []
+
+    parts = []
+    current_part = []
+    bracket_depth = 0
+
+    for char in text:
+        if char == '[':
+            bracket_depth += 1
+            current_part.append(char)
+        elif char == ']':
+            if bracket_depth > 0:
+                bracket_depth -= 1
+            current_part.append(char)
+        elif char == ',' and bracket_depth == 0:
+            parts.append("".join(current_part).strip())
+            current_part = []
+        else:
+            current_part.append(char)
+
+    if current_part:
+        parts.append("".join(current_part).strip())
+
+    return [p for p in parts if p]
+
+
 @app.post("/process-words")
 async def process_words(request: WordsRequest) -> StreamingResponse:
     """Process comma-separated words and stream results as CSV lines."""
     
-    raw_words = [w.strip() for w in request.text.split(",") if w.strip()]
+    raw_words = split_text_respecting_brackets(request.text)
     
     if not raw_words:
         raise HTTPException(status_code=400, detail="No valid words provided")

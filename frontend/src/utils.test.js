@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsvLine, createCsvLine, formatExample, unformatExample } from './utils';
+import { parseCsvLine, createCsvLine, formatExample, unformatExample, splitByCommaRespectingBrackets } from './utils';
 
 describe('Utility Functions', () => {
     describe('formatExample', () => {
@@ -31,6 +31,17 @@ describe('Utility Functions', () => {
             expect(parsed.examples[0].source).toBe('Zwei Euro, <strong>macht zusammen</strong> пять.');
         });
 
+        it('should correctly parse fields with hidden ID (different from word)', () => {
+            // Case: Infinitive (to go), [trans], translation, Ex1, Tr1, ID (go)
+            // Fields: "to go", "[tg]", "идти", "ex1", "tr1", "go" -> 6 fields (even)
+            const serverLine = '"to go";"[tg]";"идти";"ex1";"tr1";"go"';
+            const parsed = parseCsvLine(serverLine);
+            expect(parsed.word).toBe('to go');
+            expect(parsed.originalWord).toBe('go');
+            expect(parsed.transcription).toBe('[tg]');
+            expect(parsed.examples).toHaveLength(1);
+        });
+
         it('should correctly parse fields that are quoted by the backend', () => {
             // Case derived from user report: "hallo";"[ˈhalo]"...
             const serverLine = '"hallo";"[ˈhalo]";"привет, здравствуйте, алло";"#Hallo#, wie geht es dir?";"#Привет#, как дела?";"Sie sagte #hallo# zu mir.";"Она сказала мне #привет#.";"Am Telefon sagte ich #Hallo#.";"По телефону я сказал #алло#."';
@@ -51,6 +62,25 @@ describe('Utility Functions', () => {
             const fields = ['He said "Hi"', 'normal'];
             const line = createCsvLine(fields);
             expect(line).toBe('"He said ""Hi""";"normal"');
+        });
+    });
+
+    describe('splitByCommaRespectingBrackets', () => {
+
+        it('should split simple comma-separated values', () => {
+            expect(splitByCommaRespectingBrackets('hello, world')).toEqual(['hello', 'world']);
+        });
+
+        it('should ignore commas inside brackets', () => {
+            expect(splitByCommaRespectingBrackets('word 1, [word, 2], word3')).toEqual(['word 1', '[word, 2]', 'word3']);
+        });
+
+        it('should handle nested brackets (simple depth)', () => {
+            expect(splitByCommaRespectingBrackets('[a, b], c')).toEqual(['[a, b]', 'c']);
+        });
+
+        it('should handle empty input', () => {
+            expect(splitByCommaRespectingBrackets('')).toEqual([]);
         });
     });
 });
