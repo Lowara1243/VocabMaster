@@ -34,17 +34,18 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(
     level=LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, 'backend.log')),
-        logging.StreamHandler()
-    ]
+        logging.FileHandler(os.path.join(LOG_DIR, "backend.log")),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
 class WordsRequest(BaseModel):
     """Request model for word processing."""
+
     text: str = Field(..., min_length=1, max_length=5000)
     source_lang: str = Field("English", description="Source language name")
     target_lang: str = Field("Russian", description="Target language name")
@@ -70,13 +71,15 @@ PROMPTS_DIR = ""
 try:
     # Use paths relative to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    PROMPTS_DIR = os.path.join(script_dir, 'prompts')
-    with open(os.path.join(PROMPTS_DIR, 'prompt.txt'), 'r') as f:
+    PROMPTS_DIR = os.path.join(script_dir, "prompts")
+    with open(os.path.join(PROMPTS_DIR, "prompt.txt"), "r") as f:
         DEFAULT_PROMPT_TEMPLATE = f.read().strip()
-    with open(os.path.join(PROMPTS_DIR, 'fix_json_prompt.txt'), 'r') as f:
+    with open(os.path.join(PROMPTS_DIR, "fix_json_prompt.txt"), "r") as f:
         FIX_JSON_PROMPT_TEMPLATE = f.read().strip()
 except FileNotFoundError as e:
-    raise SystemExit(f"Error: Prompt file not found - {e.filename}. Please check the backend/prompts/ directory.")
+    raise SystemExit(
+        f"Error: Prompt file not found - {e.filename}. Please check the backend/prompts/ directory."
+    )
 
 
 def get_prompt_template(source_lang: str, target_lang: str) -> str:
@@ -88,47 +91,57 @@ def get_prompt_template(source_lang: str, target_lang: str) -> str:
     # Sanitize language names to prevent directory traversal or invalid filenames
     safe_source = "".join([c for c in source_lang if c.isalnum()])
     safe_target = "".join([c for c in target_lang if c.isalnum()])
-    
+
     specific_prompt_filename = f"prompt_{safe_source}_{safe_target}.txt"
     specific_prompt_path = os.path.join(PROMPTS_DIR, specific_prompt_filename)
-    
+
     if os.path.exists(specific_prompt_path):
         try:
-            with open(specific_prompt_path, 'r') as f:
+            with open(specific_prompt_path, "r") as f:
                 logger.debug(f"Using specific prompt: {specific_prompt_filename}")
                 return f.read().strip()
         except Exception as e:
-            logger.warning(f"Failed to read specific prompt {specific_prompt_filename}: {e}. Using default.")
-            
+            logger.warning(
+                f"Failed to read specific prompt {specific_prompt_filename}: {e}. Using default."
+            )
+
     # Fallback to source-only prompt
     source_only_filename = f"prompt_{safe_source}.txt"
     source_only_path = os.path.join(PROMPTS_DIR, source_only_filename)
     if os.path.exists(source_only_path):
         try:
-            with open(source_only_path, 'r') as f:
+            with open(source_only_path, "r") as f:
                 logger.debug(f"Using source-specific prompt: {source_only_filename}")
                 return f.read().strip()
         except Exception as e:
-            logger.warning(f"Failed to read source-specific prompt {source_only_filename}: {e}. Using default.")
+            logger.warning(
+                f"Failed to read source-specific prompt {source_only_filename}: {e}. Using default."
+            )
 
     return DEFAULT_PROMPT_TEMPLATE
 
 
-def build_prompt(word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
+def build_prompt(
+    word: str, source_lang: str, target_lang: str, context: str | None = None
+) -> str:
     """Build prompt for Gemini CLI."""
-    
+
     template = get_prompt_template(source_lang, target_lang)
 
     context_prompt = ""
     if context:
         context_prompt = f"Given the context `{context}`, "
 
-    return template.format(
-        word=word,
-        source_lang=source_lang,
-        target_lang=target_lang,
-        context_prompt=context_prompt
-    ).replace("\n", " ").strip()
+    return (
+        template.format(
+            word=word,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            context_prompt=context_prompt,
+        )
+        .replace("\n", " ")
+        .strip()
+    )
 
 
 def clean_csv_field(text: str) -> str:
@@ -138,14 +151,14 @@ def clean_csv_field(text: str) -> str:
     # Replace literal \n and \r if they exist as strings
     text = text.replace("\\n", " ").replace("\\r", " ")
     # Replace any sequence of whitespace with a single space
-    return re.sub(r'\s+', ' ', text).replace('"', '""').strip()
+    return re.sub(r"\s+", " ", text).replace('"', '""').strip()
 
 
 def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
     """Extract data from Gemini output, convert to CSV."""
     try:
         # Regex to find JSON block, including markdown ```json ... ```
-        match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', stdout, re.DOTALL)
+        match = re.search(r"```json\s*(\{.*?\})\s*```|(\{.*?\})", stdout, re.DOTALL)
         if not match:
             raise ValueError("No JSON object found in output")
 
@@ -155,7 +168,6 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
             raise ValueError("No JSON content extracted")
 
         data = json.loads(json_str)
-
 
         # Extract fields with defaults and clean them
         infinitive = clean_csv_field(data.get("infinitive", parsed_word))
@@ -169,21 +181,18 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
             translation = clean_csv_field(ex.get("translation", ""))
             example_fields.append(f'"{source}"')
             example_fields.append(f'"{translation}"')
-        
-        # Ensure at least two pairs of examples (even if empty) for basic compatibility
-        while len(example_fields) < 4:
-            example_fields.append('""')
-            
-        examples_str = ";".join(example_fields)
 
-        # Format as CSV line for ReWord:
-        # 1. infinitive (DISPLAY), 2. transcription, 3. translations, 4. examples... 
         # LAST FIELD: raw_word (ID for matching)
-        # Frontend expects ID to be lowercased and trimmed (but NOT whitespace-normalized like clean_csv_field does)
         id_raw = raw_word.strip().lower().replace('"', '""')
-        return (
-            f'"{infinitive}";"{transcription}";"{translations}";{examples_str};"{id_raw}"'
-        )
+
+        # Dynamically build the CSV parts
+        csv_parts = [f'"{infinitive}"', f'"{transcription}"', f'"{translations}"']
+        if example_fields:
+            csv_parts.extend(example_fields)
+
+        csv_parts.append(f'"{id_raw}"')
+
+        return ";".join(csv_parts)
 
     except (json.JSONDecodeError, ValueError, KeyError, IndexError) as e:
         # Error is logged in the calling function with more context
@@ -196,12 +205,12 @@ def format_error_response(raw_word: str, error_message: str) -> str:
     # Use raw_word as the first field, ensuring quotes are escaped
     clean_raw_word = raw_word.replace('"', '""')
     display_word = clean_raw_word
-    
+
     # ID must be lowercased to match frontend expectation
     id_raw = raw_word.strip().lower().replace('"', '""')
-    
-    # Format: Display;ErrorMsg;[error];Example1(empty);Example2(empty);ID
-    return f'"{display_word}";"{error_message}";"[error]";"";"";"{id_raw}"'
+
+    # Return a consistent format: Display;Transcription([error]);Translation([ERROR]: ErrorMessage);ID
+    return f'"{display_word}";"[error]";"[ERROR]: {error_message}";"{id_raw}"'
 
 
 async def fix_json_with_llm(broken_output: str, original_word: str) -> str | None:
@@ -226,14 +235,20 @@ async def fix_json_with_llm(broken_output: str, original_word: str) -> str | Non
         fixed_output = result.stdout
 
         # We need to re-extract the JSON from the model's response
-        match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', fixed_output, re.DOTALL)
+        match = re.search(
+            r"```json\s*(\{.*?\})\s*```|(\{.*?\})", fixed_output, re.DOTALL
+        )
         if not match:
-            logger.warning(f"JSON-fixing LLM did not return a JSON object for '{original_word}'.")
+            logger.warning(
+                f"JSON-fixing LLM did not return a JSON object for '{original_word}'."
+            )
             return None
 
         json_str = next((g for g in match.groups() if g), None)
         if not json_str:
-            logger.warning(f"JSON-fixing LLM returned empty JSON content for '{original_word}'.")
+            logger.warning(
+                f"JSON-fixing LLM returned empty JSON content for '{original_word}'."
+            )
             return None
 
         # Verify if the fixed string is valid JSON before returning
@@ -245,14 +260,24 @@ async def fix_json_with_llm(broken_output: str, original_word: str) -> str | Non
         logger.error(f"Error while trying to fix JSON for '{original_word}': {e}")
         return None
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse the 'fixed' JSON for '{original_word}': {e}. Output was:\n{fixed_output}")
+        logger.error(
+            f"Failed to parse the 'fixed' JSON for '{original_word}': {e}. Output was:\n{fixed_output}"
+        )
         return None
-    except Exception as e:
-        logger.exception(f"An unexpected error occurred while fixing JSON for '{original_word}'")
+    except Exception:
+        logger.exception(
+            f"An unexpected error occurred while fixing JSON for '{original_word}'"
+        )
         return None
 
 
-async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
+async def get_word_details(
+    raw_word: str,
+    parsed_word: str,
+    source_lang: str,
+    target_lang: str,
+    context: str | None = None,
+) -> str:
     """Fetch word details from Gemini CLI with retries. Returns CSV-formatted string."""
     prompt = build_prompt(parsed_word, source_lang, target_lang, context)
     command = ["gemini", "-m", GEMINI_MODEL, "-p", prompt]
@@ -263,7 +288,9 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"Processing word: '{raw_word}' (Attempt {attempt + 1}/{max_retries})")
+            logger.info(
+                f"Processing word: '{raw_word}' (Attempt {attempt + 1}/{max_retries})"
+            )
 
             result = await run_in_threadpool(
                 subprocess.run,
@@ -285,7 +312,7 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
         except ValueError as e:
             # This catches both parsing errors from extract_data_line and the empty response error
             logger.warning(f"Attempt {attempt + 1} failed for '{raw_word}': {e}")
-            
+
             # If it is a JSON error, try to fix it
             if ("JSON" in str(e) or "delimiter" in str(e)) and last_stdout:
                 fixed_json_str = await fix_json_with_llm(last_stdout, raw_word)
@@ -296,16 +323,18 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
                         logger.info(f"Successfully fixed JSON for '{raw_word}'.")
                         return extract_data_line(fixed_json_str, raw_word, parsed_word)
                     except ValueError as fix_e:
-                        logger.warning(f"Failed to process the 'fixed' JSON for '{raw_word}': {fix_e}")
+                        logger.warning(
+                            f"Failed to process the 'fixed' JSON for '{raw_word}': {fix_e}"
+                        )
                         last_error = f"Malformed data that could not be fixed: {fix_e}"
                 else:
                     last_error = "Malformed data that could not be fixed."
             else:
-                 last_error = f"Invalid response from model: {e}"
+                last_error = f"Invalid response from model: {e}"
 
             if attempt < max_retries - 1:
                 await asyncio.sleep(1)  # Wait 1 second before next attempt
-            continue # Go to next attempt
+            continue  # Go to next attempt
 
         except FileNotFoundError:
             logger.error("gemini-cli not found in PATH")
@@ -314,11 +343,12 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
 
         except subprocess.TimeoutExpired:
             logger.error(f"Timeout processing '{raw_word}' after {COMMAND_TIMEOUT}s")
-            last_error = f"Timeout: processing took longer than {COMMAND_TIMEOUT} seconds."
+            last_error = (
+                f"Timeout: processing took longer than {COMMAND_TIMEOUT} seconds."
+            )
             # Don't break, allow for retry if the timeout was a fluke
             if attempt >= max_retries - 1:
-                 break
-
+                break
 
         except subprocess.CalledProcessError as e:
             last_stdout = e.stdout
@@ -329,24 +359,33 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
             elif any(kw in stderr_lower for kw in ["connection", "network"]):
                 last_error = "Network error when connecting to Gemini API"
             elif "capacity" in stderr_lower:
-                last_error = "API capacity exhausted. Please try again later."
+                logger.error(
+                    f"API capacity exhausted for '{raw_word}'. Raising HTTPException."
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail="API capacity exhausted. Please try again later.",
+                )
             else:
                 last_error = "Error executing gemini-cli command"
-            
+
             if attempt >= max_retries - 1:
                 break
 
-
         except Exception as e:
-            logger.exception(f"An unexpected error occurred while processing '{raw_word}'")
+            logger.exception(
+                f"An unexpected error occurred while processing '{raw_word}'"
+            )
             last_error = f"An unexpected server error occurred: {str(e)}"
-            break # Unexpected error, break immediately
+            break  # Unexpected error, break immediately
 
     # All retries failed
-    log_message = f"All {max_retries} attempts failed for '{raw_word}'. Last error: {last_error}"
+    log_message = (
+        f"All {max_retries} attempts failed for '{raw_word}'. Last error: {last_error}"
+    )
     if last_stdout:
         log_message += f"\nLast raw output:\n---\n{last_stdout}\n---"
-    
+
     logger.error(log_message)
     return format_error_response(raw_word, last_error)
 
@@ -371,9 +410,9 @@ def parse_word_with_context(text: str) -> tuple[str, str | None]:
             e.g. "[he brought it][upon himself]" -> word: "he brought it", context: "upon himself"
     """
     bracket_content = re.findall(r"\[(.*?)\]", text)
-    
+
     # Using re.sub to get text outside brackets.
-    text_with_placeholders = re.sub(r'\[.*?\]', ' ', text)
+    text_with_placeholders = re.sub(r"\[.*?\]", " ", text)
 
     # If after stripping whitespace, there is something left, then Rule 1 applies.
     if text_with_placeholders.strip():
@@ -386,10 +425,10 @@ def parse_word_with_context(text: str) -> tuple[str, str | None]:
         if not bracket_content:
             # No brackets, no text outside, it's an empty or whitespace string
             return text.strip(), None
-        
+
         # The word is the content of the first bracket
         word = bracket_content[0]
-        
+
         # Context is made of subsequent brackets
         if len(bracket_content) > 1:
             context = " ... ".join(bracket_content[1:])
@@ -411,14 +450,14 @@ def split_text_respecting_brackets(text: str) -> list[str]:
     bracket_depth = 0
 
     for char in text:
-        if char == '[':
+        if char == "[":
             bracket_depth += 1
             current_part.append(char)
-        elif char == ']':
+        elif char == "]":
             if bracket_depth > 0:
                 bracket_depth -= 1
             current_part.append(char)
-        elif char == ',' and bracket_depth == 0:
+        elif char == "," and bracket_depth == 0:
             parts.append("".join(current_part).strip())
             current_part = []
         else:
@@ -433,9 +472,9 @@ def split_text_respecting_brackets(text: str) -> list[str]:
 @app.post("/process-words")
 async def process_words(request: WordsRequest) -> StreamingResponse:
     """Process comma-separated words and stream results as CSV lines."""
-    
+
     raw_words = split_text_respecting_brackets(request.text)
-    
+
     if not raw_words:
         raise HTTPException(status_code=400, detail="No valid words provided")
 
@@ -452,14 +491,24 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
         if parsed_word:
             requests_to_process.append((raw_word, parsed_word.lower(), context))
 
-    logger.info(f"Processing {len(requests_to_process)} words from {request.source_lang} to {request.target_lang}")
+    logger.info(
+        f"Processing {len(requests_to_process)} words from {request.source_lang} to {request.target_lang}"
+    )
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-    async def constrained_get_word_details(raw_word: str, parsed_word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
+    async def constrained_get_word_details(
+        raw_word: str,
+        parsed_word: str,
+        source_lang: str,
+        target_lang: str,
+        context: str | None = None,
+    ) -> str:
         async with semaphore:
             try:
-                return await get_word_details(raw_word, parsed_word, source_lang, target_lang, context)
+                return await get_word_details(
+                    raw_word, parsed_word, source_lang, target_lang, context
+                )
             except Exception as e:
                 logger.exception(f"Error processing '{raw_word}'")
                 return format_error_response(raw_word, f"Error: {str(e)}")
@@ -467,10 +516,12 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
     async def stream_results() -> AsyncGenerator[str, None]:
         """Generate CSV lines for each processed word as they complete."""
         tasks = [
-            constrained_get_word_details(raw_word, parsed_word, request.source_lang, request.target_lang, context)
+            constrained_get_word_details(
+                raw_word, parsed_word, request.source_lang, request.target_lang, context
+            )
             for raw_word, parsed_word, context in requests_to_process
         ]
-        
+
         for task in asyncio.as_completed(tasks):
             result = await task
             yield f"{result}\n"
@@ -487,4 +538,5 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

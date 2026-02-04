@@ -115,16 +115,14 @@ export function parseCsvLine(line) {
   }
 
   // Handle error case
-  if (fields.length >= 3 && fields[2] === '[error]') {
+  if (fields.length >= 3 && fields[2].startsWith('[ERROR]:')) {
     return {
-      originalWord: originalWord,
-      word: fields[1] || 'Unknown error', // The error message is in the second field
-      transcription: '[error]',
-      translation: '',
-      example1_en: '',
-      example1_ru: '',
-      example2_en: '',
-      example2_ru: '',
+      word: originalWord, // The word that caused the error
+      transcription: '', // No transcription for an error
+      translation: fields[2], // The full error message
+      originalWord: originalWord, // The original requested word
+      examples: [], // No examples for an error
+      status: 'error', // Signal error status to Results.jsx
       raw: line,
     };
   }

@@ -58,7 +58,7 @@ screen -S backend_session -d -m bash -c "uv run python backend/run.py"
 
 # Run frontend (Vite preview) in a new screen session
 echo "Starting frontend server in background session 'frontend_session'..."
-screen -S frontend_session -d -m bash -c "cd '$FRONTEND_DIR' && npm run preview -- --port 4173 --host"
+screen -S frontend_session -d -m bash -c "cd '$FRONTEND_DIR' && npm run preview -- --port 4173"
 
 # Give servers a moment to start
 sleep 2

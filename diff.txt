@@ -1,0 +1,1254 @@
+diff --git a/README.md b/README.md
+index 8ab7b29..f1f9246 100644
+--- a/README.md
++++ b/README.md
+@@ -11,7 +11,7 @@ A client-server application for obtaining detailed information about English wor
+ 
+ - Processing of individual words and phrases (e.g., "look for")
+ - Context support for more accurate translations (e.g., `[a piece of furniture] table`)
+-- Support for 10 popular languages with language-specific rules:
++- Support for 11 popular languages with language-specific rules:
+   - **German nouns**: Automatically includes definite articles and plural forms (e.g., "Apfel" → "der Apfel (die Äpfel)")
+   - **English verbs**: Automatically adds the "to" particle (e.g., "go" → "to go")
+ - Real-time streaming results (asynchronous processing) with concurrency control
+diff --git a/README.ru.md b/README.ru.md
+index 1809a79..039d3b0 100644
+--- a/README.ru.md
++++ b/README.ru.md
+@@ -11,7 +11,7 @@
+ 
+ - Обработка отдельных слов и фраз (например, "look for")
+ - Поддержка контекста для более точного перевода (например,`[a piece of furniture] table`)
+-- Поддержка 10 популярных языков со специфическими правилами:
++- Поддержка 11 популярных языков со специфическими правилами:
+   - **Немецкие существительные**: Автоматическое добавление артикля и формы множественного числа (например, "Apfel" → "der Apfel (die Äpfel)")
+   - **Английские глаголы**: Автоматическое добавление частицы "to" (например, "go" → "to go")
+ - Стриминг результатов в реальном времени (асинхронная обработка) с контролем конкурентности
+diff --git a/backend/main.py b/backend/main.py
+index 92606db..41d2a40 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -34,17 +34,18 @@ os.makedirs(LOG_DIR, exist_ok=True)
+ 
+ logging.basicConfig(
+     level=LOG_LEVEL,
+-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
++    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+     handlers=[
+-        logging.FileHandler(os.path.join(LOG_DIR, 'backend.log')),
+-        logging.StreamHandler()
+-    ]
++        logging.FileHandler(os.path.join(LOG_DIR, "backend.log")),
++        logging.StreamHandler(),
++    ],
+ )
+ logger = logging.getLogger(__name__)
+ 
+ 
+ class WordsRequest(BaseModel):
+     """Request model for word processing."""
++
+     text: str = Field(..., min_length=1, max_length=5000)
+     source_lang: str = Field("English", description="Source language name")
+     target_lang: str = Field("Russian", description="Target language name")
+@@ -70,13 +71,15 @@ PROMPTS_DIR = ""
+ try:
+     # Use paths relative to this script
+     script_dir = os.path.dirname(os.path.abspath(__file__))
+-    PROMPTS_DIR = os.path.join(script_dir, 'prompts')
+-    with open(os.path.join(PROMPTS_DIR, 'prompt.txt'), 'r') as f:
++    PROMPTS_DIR = os.path.join(script_dir, "prompts")
++    with open(os.path.join(PROMPTS_DIR, "prompt.txt"), "r") as f:
+         DEFAULT_PROMPT_TEMPLATE = f.read().strip()
+-    with open(os.path.join(PROMPTS_DIR, 'fix_json_prompt.txt'), 'r') as f:
++    with open(os.path.join(PROMPTS_DIR, "fix_json_prompt.txt"), "r") as f:
+         FIX_JSON_PROMPT_TEMPLATE = f.read().strip()
+ except FileNotFoundError as e:
+-    raise SystemExit(f"Error: Prompt file not found - {e.filename}. Please check the backend/prompts/ directory.")
++    raise SystemExit(
++        f"Error: Prompt file not found - {e.filename}. Please check the backend/prompts/ directory."
++    )
+ 
+ 
+ def get_prompt_template(source_lang: str, target_lang: str) -> str:
+@@ -88,47 +91,57 @@ def get_prompt_template(source_lang: str, target_lang: str) -> str:
+     # Sanitize language names to prevent directory traversal or invalid filenames
+     safe_source = "".join([c for c in source_lang if c.isalnum()])
+     safe_target = "".join([c for c in target_lang if c.isalnum()])
+-    
++
+     specific_prompt_filename = f"prompt_{safe_source}_{safe_target}.txt"
+     specific_prompt_path = os.path.join(PROMPTS_DIR, specific_prompt_filename)
+-    
++
+     if os.path.exists(specific_prompt_path):
+         try:
+-            with open(specific_prompt_path, 'r') as f:
++            with open(specific_prompt_path, "r") as f:
+                 logger.debug(f"Using specific prompt: {specific_prompt_filename}")
+                 return f.read().strip()
+         except Exception as e:
+-            logger.warning(f"Failed to read specific prompt {specific_prompt_filename}: {e}. Using default.")
+-            
++            logger.warning(
++                f"Failed to read specific prompt {specific_prompt_filename}: {e}. Using default."
++            )
++
+     # Fallback to source-only prompt
+     source_only_filename = f"prompt_{safe_source}.txt"
+     source_only_path = os.path.join(PROMPTS_DIR, source_only_filename)
+     if os.path.exists(source_only_path):
+         try:
+-            with open(source_only_path, 'r') as f:
++            with open(source_only_path, "r") as f:
+                 logger.debug(f"Using source-specific prompt: {source_only_filename}")
+                 return f.read().strip()
+         except Exception as e:
+-            logger.warning(f"Failed to read source-specific prompt {source_only_filename}: {e}. Using default.")
++            logger.warning(
++                f"Failed to read source-specific prompt {source_only_filename}: {e}. Using default."
++            )
+ 
+     return DEFAULT_PROMPT_TEMPLATE
+ 
+ 
+-def build_prompt(word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
++def build_prompt(
++    word: str, source_lang: str, target_lang: str, context: str | None = None
++) -> str:
+     """Build prompt for Gemini CLI."""
+-    
++
+     template = get_prompt_template(source_lang, target_lang)
+ 
+     context_prompt = ""
+     if context:
+         context_prompt = f"Given the context `{context}`, "
+ 
+-    return template.format(
+-        word=word,
+-        source_lang=source_lang,
+-        target_lang=target_lang,
+-        context_prompt=context_prompt
+-    ).replace("\n", " ").strip()
++    return (
++        template.format(
++            word=word,
++            source_lang=source_lang,
++            target_lang=target_lang,
++            context_prompt=context_prompt,
++        )
++        .replace("\n", " ")
++        .strip()
++    )
+ 
+ 
+ def clean_csv_field(text: str) -> str:
+@@ -138,14 +151,14 @@ def clean_csv_field(text: str) -> str:
+     # Replace literal \n and \r if they exist as strings
+     text = text.replace("\\n", " ").replace("\\r", " ")
+     # Replace any sequence of whitespace with a single space
+-    return re.sub(r'\s+', ' ', text).replace('"', '""').strip()
++    return re.sub(r"\s+", " ", text).replace('"', '""').strip()
+ 
+ 
+ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
+     """Extract data from Gemini output, convert to CSV."""
+     try:
+         # Regex to find JSON block, including markdown ```json ... ```
+-        match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', stdout, re.DOTALL)
++        match = re.search(r"```json\s*(\{.*?\})\s*```|(\{.*?\})", stdout, re.DOTALL)
+         if not match:
+             raise ValueError("No JSON object found in output")
+ 
+@@ -156,7 +169,6 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
+ 
+         data = json.loads(json_str)
+ 
+-
+         # Extract fields with defaults and clean them
+         infinitive = clean_csv_field(data.get("infinitive", parsed_word))
+         transcription = clean_csv_field(data.get("transcription", ""))
+@@ -169,21 +181,18 @@ def extract_data_line(stdout: str, raw_word: str, parsed_word: str) -> str:
+             translation = clean_csv_field(ex.get("translation", ""))
+             example_fields.append(f'"{source}"')
+             example_fields.append(f'"{translation}"')
+-        
+-        # Ensure at least two pairs of examples (even if empty) for basic compatibility
+-        while len(example_fields) < 4:
+-            example_fields.append('""')
+-            
+-        examples_str = ";".join(example_fields)
+-
+-        # Format as CSV line for ReWord:
+-        # 1. infinitive (DISPLAY), 2. transcription, 3. translations, 4. examples... 
++
+         # LAST FIELD: raw_word (ID for matching)
+-        # Frontend expects ID to be lowercased and trimmed (but NOT whitespace-normalized like clean_csv_field does)
+         id_raw = raw_word.strip().lower().replace('"', '""')
+-        return (
+-            f'"{infinitive}";"{transcription}";"{translations}";{examples_str};"{id_raw}"'
+-        )
++
++        # Dynamically build the CSV parts
++        csv_parts = [f'"{infinitive}"', f'"{transcription}"', f'"{translations}"']
++        if example_fields:
++            csv_parts.extend(example_fields)
++
++        csv_parts.append(f'"{id_raw}"')
++
++        return ";".join(csv_parts)
+ 
+     except (json.JSONDecodeError, ValueError, KeyError, IndexError) as e:
+         # Error is logged in the calling function with more context
+@@ -196,12 +205,12 @@ def format_error_response(raw_word: str, error_message: str) -> str:
+     # Use raw_word as the first field, ensuring quotes are escaped
+     clean_raw_word = raw_word.replace('"', '""')
+     display_word = clean_raw_word
+-    
++
+     # ID must be lowercased to match frontend expectation
+     id_raw = raw_word.strip().lower().replace('"', '""')
+-    
+-    # Format: Display;ErrorMsg;[error];Example1(empty);Example2(empty);ID
+-    return f'"{display_word}";"{error_message}";"[error]";"";"";"{id_raw}"'
++
++    # Return a consistent format: Display;Transcription([error]);Translation([ERROR]: ErrorMessage);ID
++    return f'"{display_word}";"[error]";"[ERROR]: {error_message}";"{id_raw}"'
+ 
+ 
+ async def fix_json_with_llm(broken_output: str, original_word: str) -> str | None:
+@@ -226,14 +235,20 @@ async def fix_json_with_llm(broken_output: str, original_word: str) -> str | Non
+         fixed_output = result.stdout
+ 
+         # We need to re-extract the JSON from the model's response
+-        match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', fixed_output, re.DOTALL)
++        match = re.search(
++            r"```json\s*(\{.*?\})\s*```|(\{.*?\})", fixed_output, re.DOTALL
++        )
+         if not match:
+-            logger.warning(f"JSON-fixing LLM did not return a JSON object for '{original_word}'.")
++            logger.warning(
++                f"JSON-fixing LLM did not return a JSON object for '{original_word}'."
++            )
+             return None
+ 
+         json_str = next((g for g in match.groups() if g), None)
+         if not json_str:
+-            logger.warning(f"JSON-fixing LLM returned empty JSON content for '{original_word}'.")
++            logger.warning(
++                f"JSON-fixing LLM returned empty JSON content for '{original_word}'."
++            )
+             return None
+ 
+         # Verify if the fixed string is valid JSON before returning
+@@ -245,14 +260,24 @@ async def fix_json_with_llm(broken_output: str, original_word: str) -> str | Non
+         logger.error(f"Error while trying to fix JSON for '{original_word}': {e}")
+         return None
+     except json.JSONDecodeError as e:
+-        logger.error(f"Failed to parse the 'fixed' JSON for '{original_word}': {e}. Output was:\n{fixed_output}")
++        logger.error(
++            f"Failed to parse the 'fixed' JSON for '{original_word}': {e}. Output was:\n{fixed_output}"
++        )
+         return None
+-    except Exception as e:
+-        logger.exception(f"An unexpected error occurred while fixing JSON for '{original_word}'")
++    except Exception:
++        logger.exception(
++            f"An unexpected error occurred while fixing JSON for '{original_word}'"
++        )
+         return None
+ 
+ 
+-async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
++async def get_word_details(
++    raw_word: str,
++    parsed_word: str,
++    source_lang: str,
++    target_lang: str,
++    context: str | None = None,
++) -> str:
+     """Fetch word details from Gemini CLI with retries. Returns CSV-formatted string."""
+     prompt = build_prompt(parsed_word, source_lang, target_lang, context)
+     command = ["gemini", "-m", GEMINI_MODEL, "-p", prompt]
+@@ -263,7 +288,9 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
+ 
+     for attempt in range(max_retries):
+         try:
+-            logger.info(f"Processing word: '{raw_word}' (Attempt {attempt + 1}/{max_retries})")
++            logger.info(
++                f"Processing word: '{raw_word}' (Attempt {attempt + 1}/{max_retries})"
++            )
+ 
+             result = await run_in_threadpool(
+                 subprocess.run,
+@@ -285,7 +312,7 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
+         except ValueError as e:
+             # This catches both parsing errors from extract_data_line and the empty response error
+             logger.warning(f"Attempt {attempt + 1} failed for '{raw_word}': {e}")
+-            
++
+             # If it is a JSON error, try to fix it
+             if ("JSON" in str(e) or "delimiter" in str(e)) and last_stdout:
+                 fixed_json_str = await fix_json_with_llm(last_stdout, raw_word)
+@@ -296,16 +323,18 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
+                         logger.info(f"Successfully fixed JSON for '{raw_word}'.")
+                         return extract_data_line(fixed_json_str, raw_word, parsed_word)
+                     except ValueError as fix_e:
+-                        logger.warning(f"Failed to process the 'fixed' JSON for '{raw_word}': {fix_e}")
++                        logger.warning(
++                            f"Failed to process the 'fixed' JSON for '{raw_word}': {fix_e}"
++                        )
+                         last_error = f"Malformed data that could not be fixed: {fix_e}"
+                 else:
+                     last_error = "Malformed data that could not be fixed."
+             else:
+-                 last_error = f"Invalid response from model: {e}"
++                last_error = f"Invalid response from model: {e}"
+ 
+             if attempt < max_retries - 1:
+                 await asyncio.sleep(1)  # Wait 1 second before next attempt
+-            continue # Go to next attempt
++            continue  # Go to next attempt
+ 
+         except FileNotFoundError:
+             logger.error("gemini-cli not found in PATH")
+@@ -314,11 +343,12 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
+ 
+         except subprocess.TimeoutExpired:
+             logger.error(f"Timeout processing '{raw_word}' after {COMMAND_TIMEOUT}s")
+-            last_error = f"Timeout: processing took longer than {COMMAND_TIMEOUT} seconds."
++            last_error = (
++                f"Timeout: processing took longer than {COMMAND_TIMEOUT} seconds."
++            )
+             # Don't break, allow for retry if the timeout was a fluke
+             if attempt >= max_retries - 1:
+-                 break
+-
++                break
+ 
+         except subprocess.CalledProcessError as e:
+             last_stdout = e.stdout
+@@ -329,24 +359,33 @@ async def get_word_details(raw_word: str, parsed_word: str, source_lang: str, ta
+             elif any(kw in stderr_lower for kw in ["connection", "network"]):
+                 last_error = "Network error when connecting to Gemini API"
+             elif "capacity" in stderr_lower:
+-                last_error = "API capacity exhausted. Please try again later."
++                logger.error(
++                    f"API capacity exhausted for '{raw_word}'. Raising HTTPException."
++                )
++                raise HTTPException(
++                    status_code=429,
++                    detail="API capacity exhausted. Please try again later.",
++                )
+             else:
+                 last_error = "Error executing gemini-cli command"
+-            
++
+             if attempt >= max_retries - 1:
+                 break
+ 
+-
+         except Exception as e:
+-            logger.exception(f"An unexpected error occurred while processing '{raw_word}'")
++            logger.exception(
++                f"An unexpected error occurred while processing '{raw_word}'"
++            )
+             last_error = f"An unexpected server error occurred: {str(e)}"
+-            break # Unexpected error, break immediately
++            break  # Unexpected error, break immediately
+ 
+     # All retries failed
+-    log_message = f"All {max_retries} attempts failed for '{raw_word}'. Last error: {last_error}"
++    log_message = (
++        f"All {max_retries} attempts failed for '{raw_word}'. Last error: {last_error}"
++    )
+     if last_stdout:
+         log_message += f"\nLast raw output:\n---\n{last_stdout}\n---"
+-    
++
+     logger.error(log_message)
+     return format_error_response(raw_word, last_error)
+ 
+@@ -371,9 +410,9 @@ def parse_word_with_context(text: str) -> tuple[str, str | None]:
+             e.g. "[he brought it][upon himself]" -> word: "he brought it", context: "upon himself"
+     """
+     bracket_content = re.findall(r"\[(.*?)\]", text)
+-    
++
+     # Using re.sub to get text outside brackets.
+-    text_with_placeholders = re.sub(r'\[.*?\]', ' ', text)
++    text_with_placeholders = re.sub(r"\[.*?\]", " ", text)
+ 
+     # If after stripping whitespace, there is something left, then Rule 1 applies.
+     if text_with_placeholders.strip():
+@@ -386,10 +425,10 @@ def parse_word_with_context(text: str) -> tuple[str, str | None]:
+         if not bracket_content:
+             # No brackets, no text outside, it's an empty or whitespace string
+             return text.strip(), None
+-        
++
+         # The word is the content of the first bracket
+         word = bracket_content[0]
+-        
++
+         # Context is made of subsequent brackets
+         if len(bracket_content) > 1:
+             context = " ... ".join(bracket_content[1:])
+@@ -411,14 +450,14 @@ def split_text_respecting_brackets(text: str) -> list[str]:
+     bracket_depth = 0
+ 
+     for char in text:
+-        if char == '[':
++        if char == "[":
+             bracket_depth += 1
+             current_part.append(char)
+-        elif char == ']':
++        elif char == "]":
+             if bracket_depth > 0:
+                 bracket_depth -= 1
+             current_part.append(char)
+-        elif char == ',' and bracket_depth == 0:
++        elif char == "," and bracket_depth == 0:
+             parts.append("".join(current_part).strip())
+             current_part = []
+         else:
+@@ -433,9 +472,9 @@ def split_text_respecting_brackets(text: str) -> list[str]:
+ @app.post("/process-words")
+ async def process_words(request: WordsRequest) -> StreamingResponse:
+     """Process comma-separated words and stream results as CSV lines."""
+-    
++
+     raw_words = split_text_respecting_brackets(request.text)
+-    
++
+     if not raw_words:
+         raise HTTPException(status_code=400, detail="No valid words provided")
+ 
+@@ -452,14 +491,24 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
+         if parsed_word:
+             requests_to_process.append((raw_word, parsed_word.lower(), context))
+ 
+-    logger.info(f"Processing {len(requests_to_process)} words from {request.source_lang} to {request.target_lang}")
++    logger.info(
++        f"Processing {len(requests_to_process)} words from {request.source_lang} to {request.target_lang}"
++    )
+ 
+     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+ 
+-    async def constrained_get_word_details(raw_word: str, parsed_word: str, source_lang: str, target_lang: str, context: str | None = None) -> str:
++    async def constrained_get_word_details(
++        raw_word: str,
++        parsed_word: str,
++        source_lang: str,
++        target_lang: str,
++        context: str | None = None,
++    ) -> str:
+         async with semaphore:
+             try:
+-                return await get_word_details(raw_word, parsed_word, source_lang, target_lang, context)
++                return await get_word_details(
++                    raw_word, parsed_word, source_lang, target_lang, context
++                )
+             except Exception as e:
+                 logger.exception(f"Error processing '{raw_word}'")
+                 return format_error_response(raw_word, f"Error: {str(e)}")
+@@ -467,10 +516,12 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
+     async def stream_results() -> AsyncGenerator[str, None]:
+         """Generate CSV lines for each processed word as they complete."""
+         tasks = [
+-            constrained_get_word_details(raw_word, parsed_word, request.source_lang, request.target_lang, context)
++            constrained_get_word_details(
++                raw_word, parsed_word, request.source_lang, request.target_lang, context
++            )
+             for raw_word, parsed_word, context in requests_to_process
+         ]
+-        
++
+         for task in asyncio.as_completed(tasks):
+             result = await task
+             yield f"{result}\n"
+@@ -487,4 +538,5 @@ async def process_words(request: WordsRequest) -> StreamingResponse:
+ 
+ if __name__ == "__main__":
+     import uvicorn
++
+     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+diff --git a/backend/prompts/fix_json_prompt.txt b/backend/prompts/fix_json_prompt.txt
+index bd8b1ba..bab6789 100644
+--- a/backend/prompts/fix_json_prompt.txt
++++ b/backend/prompts/fix_json_prompt.txt
+@@ -1,6 +1,15 @@
+-The following text is a corrupted JSON object that was returned from an API. Please fix it and return only the corrected, valid JSON object. Do not provide any explanation or surrounding text. Just the JSON.
++An API returned the following text, which is a corrupted or incomplete JSON object. Your task is to repair it so it conforms to the specified schema.
+ 
+-Corrupted JSON:
++Return ONLY the corrected, valid JSON object. Provide no explanation or surrounding text.
++
++**JSON Schema Rules:**
++The JSON object must have the following fields:
++- "infinitive": A string. Can be in the format "corrected_word (from 'original_word')".
++- "transcription": A string, or the value "N/A".
++- "translations": A list of strings.
++- "examples": A list of objects. Each object must have "source" and "translation" keys. This list can be empty (`[]`).
++
++**Corrupted JSON:**
+ ```
+ {broken_output}
+-```
+\ No newline at end of file
++```
+diff --git a/backend/prompts/prompt.txt b/backend/prompts/prompt.txt
+index 4212326..e62021d 100644
+--- a/backend/prompts/prompt.txt
++++ b/backend/prompts/prompt.txt
+@@ -1,14 +1,64 @@
+-{context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
+-- "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form).
+-- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
+-- "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
+-- "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
+-
+-Important rules:
+-- The provided word/phrase is in {source_lang}. You MUST treat it as a {source_lang} word/phrase. Do not guess the language.
+-- If word/phrase doesn't exist or you're uncertain: set transcription to "N/A"
+-- For multi-word phrases like "give up", highlight the entire phrase: #give up#
+-- Provide up to 3 examples when possible
+-- Return ONLY valid JSON, no markdown blocks, no additional text
+-
+-Example: {{"infinitive": "obnoxious", "transcription": "[əbˈnɒkʃəs]", "translations": ["неприятный", "отвратительный"], "examples": [{{"source": "His #obnoxious# behavior annoyed everyone.", "translation": "Его #отвратительное# поведение раздражало всех."}}, {{"source": "She found his jokes #obnoxious#.", "translation": "Она находила его шутки #отвратительными#."}}]}}
++{context_prompt}Analyze the word/phrase "{word}" from the {source_lang} language. Your task is to provide a detailed analysis in a strict JSON format.
++
++First, determine if "{word}" has a minor spelling error. If it does, correct it to the most likely intended word. This correction should only apply to clear typos and not alter words based on diacritics or accents, as these are crucial for word meaning in {source_lang}. All subsequent fields in the JSON should be based on this CORRECTED word.
++
++Provide ONLY a single, valid JSON object with the following fields:
++
++- "infinitive": string. The base or dictionary form of the word.
++    - If you corrected a spelling error, provide ONLY the corrected word. Do NOT include phrases like "(from '...')".
++    - Otherwise, just provide the base form of the word.
++- "transcription": string. The IPA transcription (e.g., [trænˈskrɪpʃən]). If the word cannot be transcribed (e.g., it's a proper noun, abbreviation, or does not exist), use "N/A".
++    - **TRANSCRIPTION STYLE:** Use simplified IPA. DO NOT use syllable breaks (the dot `.`) or tie bars (the arch `͡` like in `t͡ʃ`). For example, use [tʃac] instead of [ˈza.t͡ʃac].
++- "translations": list of strings. Provide common translations into {target_lang}.
++- "examples": list of objects. Each object must have two keys: "source" (a {source_lang} sentence) and "translation" (its {target_lang} translation).
++    - If the input "{word}" is already a complete sentence or phrase where examples would not be useful (like "How are you?"), provide an empty list: `[]`.
++    - Otherwise, provide one or two useful examples.
++    - In the "source" sentence, highlight the relevant form of the word with hash symbols (e.g., #word#).
++
++**CRITICAL RULES:**
++- Your entire output MUST be only the JSON object. No extra text, no apologies, no markdown `json` tags.
++- All translations for examples MUST be complete sentences in the {target_lang}. Do not leave any words from the source language untranslated in the example translation.
++- If the word is nonsensical or cannot be found, return a JSON with "transcription" as "N/A" and empty lists for "translations" and "examples".
++- **NEVER** include the original input word in the "infinitive" field if it was a typo (e.g., use "word" NOT "word (from 'wrd')").
++
++**Example 1 (Input: "run", Source: English, Target: Russian):**
++{{
++    "infinitive": "run",
++    "transcription": "[rʌn]",
++    "translations": ["бежать", "управлять", "работать"],
++    "examples": [
++        {{
++            "source": "I can #run# a mile in five minutes.",
++            "translation": "Я могу #пробежать# милю за пять минут."
++        }},
++        {{
++            "source": "She #runs# a successful company.",
++            "translation": "Она #управляет# успешной компанией."
++        }}
++    ]
++}}
++
++**Example 2 (Input: "obnoxius", Source: English, Target: Russian):**
++{{
++    "infinitive": "obnoxious",
++    "transcription": "[əbˈnɒkʃəs]",
++    "translations": ["неприятный", "отвратительный"],
++    "examples": [
++        {{
++            "source": "He has some #obnoxious# habits.",
++            "translation": "У него есть несколько #неприятных# привычек."
++        }},
++        {{
++            "source": "What an #obnoxious# man!",
++            "translation": "Какой #неприятный# человек!"
++        }}
++    ]
++}}
++
++**Example 3 (Input: "was ist das?", Source: German, Target: English):**
++{{
++    "infinitive": "was ist das?",
++    "transcription": "[vas ɪst das]",
++    "translations": ["what is that?"],
++    "examples": []
++}}
+\ No newline at end of file
+diff --git a/backend/prompts/prompt_English.txt b/backend/prompts/prompt_English.txt
+index fde2120..2f48526 100644
+--- a/backend/prompts/prompt_English.txt
++++ b/backend/prompts/prompt_English.txt
+@@ -1,6 +1,6 @@
+ {context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
+ - "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form). If it's a verb, add the particle "to" (e.g., "go" -> "to go").
+-- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
++- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use simplified IPA: DO NOT use syllable breaks (.) or tie bars (͡). Use the "infinitive".
+ - "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
+ - "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
+ 
+diff --git a/backend/prompts/prompt_German.txt b/backend/prompts/prompt_German.txt
+index b99d05a..2fda348 100644
+--- a/backend/prompts/prompt_German.txt
++++ b/backend/prompts/prompt_German.txt
+@@ -1,6 +1,6 @@
+ {context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
+ - "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form). If the word is a noun, include its definite article (der, die, das) AND its plural form in brackets. For example: "der Apfel (die Äpfel)", "das Auto (die Autos)".
+-- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
++- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use simplified IPA: DO NOT use syllable breaks (.) or tie bars (͡). Use the "infinitive".
+ - "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
+ - "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
+ 
+diff --git a/backend/run.py b/backend/run.py
+index ca2fcc1..63ffffe 100755
+--- a/backend/run.py
++++ b/backend/run.py
+@@ -12,16 +12,12 @@ def main():
+     # regardless of where this script is called from.
+     script_dir = os.path.dirname(os.path.abspath(__file__))
+     root_dir = os.path.dirname(script_dir)
+-    
++
+     if root_dir not in sys.path:
+         sys.path.insert(0, root_dir)
+ 
+     uvicorn.run(
+-        "backend.main:app",
+-        host="0.0.0.0",
+-        port=8000,
+-        reload=True,
+-        log_level="info"
++        "backend.main:app", host="127.0.0.1", port=8000, reload=True, log_level="info"
+     )
+ 
+ 
+diff --git a/backend_stdout.log b/backend_stdout.log
+deleted file mode 100644
+index 4caa12e..0000000
+--- a/backend_stdout.log
++++ /dev/null
+@@ -1,9 +0,0 @@
+-nohup: ignoring input
+-INFO:     Started server process [402]
+-INFO:     Waiting for application startup.
+-INFO:     Application startup complete.
+-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+-INFO:     127.0.0.1:51408 - "GET /health HTTP/1.1" 200 OK
+-2026-01-17 10:51:32,742 - backend.main - INFO - Processing 1 words from German to Russian
+-INFO:     127.0.0.1:56082 - "POST /process-words HTTP/1.1" 200 OK
+-2026-01-17 10:51:32,745 - backend.main - INFO - Processing word: 'Apfel' (Attempt 1/3)
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 268e344..9ffabcb 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -75,8 +75,8 @@ function App() {
+           setResults(prevResults => {
+             const updatedResults = prevResults.map(r => {
+               if (r.originalWord === parsedResult.originalWord) {
+-                if (parsedResult.transcription === '[error]') {
+-                  return { ...r, status: 'error', error: parsedResult.word };
++                if (parsedResult.transcription === '[error]' || parsedResult.status === 'error') {
++                  return { ...r, status: 'error', error: parsedResult.translation };
+                 }
+                 const isNotFound = parsedResult.transcription === 'N/A';
+                 if (!isNotFound) {
+diff --git a/frontend/src/components/languages.js b/frontend/src/components/languages.js
+index 316ddfe..1b70f9d 100644
+--- a/frontend/src/components/languages.js
++++ b/frontend/src/components/languages.js
+@@ -10,4 +10,5 @@ export const languages = [
+   'Portuguese',
+   'Russian',
+   'Spanish',
++  'Slovak',
+ ];
+\ No newline at end of file
+diff --git a/frontend/src/utils.js b/frontend/src/utils.js
+index 9757fb4..060afa1 100644
+--- a/frontend/src/utils.js
++++ b/frontend/src/utils.js
+@@ -115,16 +115,14 @@ export function parseCsvLine(line) {
+   }
+ 
+   // Handle error case
+-  if (fields.length >= 3 && fields[2] === '[error]') {
++  if (fields.length >= 3 && fields[2].startsWith('[ERROR]:')) {
+     return {
+-      originalWord: originalWord,
+-      word: fields[1] || 'Unknown error', // The error message is in the second field
+-      transcription: '[error]',
+-      translation: '',
+-      example1_en: '',
+-      example1_ru: '',
+-      example2_en: '',
+-      example2_ru: '',
++      word: originalWord, // The word that caused the error
++      transcription: '', // No transcription for an error
++      translation: fields[2], // The full error message
++      originalWord: originalWord, // The original requested word
++      examples: [], // No examples for an error
++      status: 'error', // Signal error status to Results.jsx
+       raw: line,
+     };
+   }
+diff --git a/frontend/src/utils.test.js b/frontend/src/utils.test.js
+index 58942b6..6240914 100644
+--- a/frontend/src/utils.test.js
++++ b/frontend/src/utils.test.js
+@@ -52,6 +52,27 @@ describe('Utility Functions', () => {
+             expect(parsed.examples[0].source).toBe('<strong>Hallo</strong>, wie geht es dir?');
+         });
+ 
++        it('should parse a CSV line with zero examples correctly', () => {
++            const csvLine = '"was ist das?";"[vas ɪst das]";"what is that?";"was ist das?"';
++            const parsed = parseCsvLine(csvLine);
++            expect(parsed.word).toBe('was ist das?');
++            expect(parsed.transcription).toBe('[vas ɪst das]');
++            expect(parsed.translation).toBe('what is that?');
++            expect(parsed.examples).toEqual([]);
++            expect(parsed.status).toBeUndefined(); // Or 'processed' if that's the default
++        });
++
++        it('should parse an error CSV line with the new [ERROR]: prefix', () => {
++            const csvLine = '"miesto";"";"[ERROR]: API capacity exhausted. Please try again later.";"miesto"';
++            const parsed = parseCsvLine(csvLine);
++            expect(parsed.word).toBe('miesto');
++            expect(parsed.transcription).toBe(''); // Empty, as per format_error_response
++            expect(parsed.translation).toBe('[ERROR]: API capacity exhausted. Please try again later.');
++            expect(parsed.examples).toEqual([]);
++            expect(parsed.status).toBe('error');
++            expect(parsed.originalWord).toBe('miesto');
++        });
++
+         it('should create a CSV line correctly', () => {
+             const fields = ['word', 'trans', 'IPA', 'source', 'target'];
+             const line = createCsvLine(fields);
+diff --git a/frontend/vite.config.js b/frontend/vite.config.js
+index 5a33944..5e2a915 100644
+--- a/frontend/vite.config.js
++++ b/frontend/vite.config.js
+@@ -4,4 +4,8 @@ import react from '@vitejs/plugin-react'
+ // https://vitejs.dev/config/
+ export default defineConfig({
+   plugins: [react()],
++  server: {
++    host: 'localhost',
++  },
+ })
++
+diff --git a/pyproject.toml b/pyproject.toml
+index a9f9058..d427518 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -21,3 +21,6 @@ dev = [
+     "pytest>=9.0.2",
+     "pytest-asyncio>=1.3.0",
+ ]
++[tool.pytest.ini_options]
++pythonpath = ["."]
++testpaths = ["tests"]
+diff --git a/run_project.sh b/run_project.sh
+index db2d3fd..84ba91e 100755
+--- a/run_project.sh
++++ b/run_project.sh
+@@ -58,7 +58,7 @@ screen -S backend_session -d -m bash -c "uv run python backend/run.py"
+ 
+ # Run frontend (Vite preview) in a new screen session
+ echo "Starting frontend server in background session 'frontend_session'..."
+-screen -S frontend_session -d -m bash -c "cd '$FRONTEND_DIR' && npm run preview -- --port 4173 --host"
++screen -S frontend_session -d -m bash -c "cd '$FRONTEND_DIR' && npm run preview -- --port 4173"
+ 
+ # Give servers a moment to start
+ sleep 2
+diff --git a/scripts/csv_to_anki.py b/scripts/csv_to_anki.py
+index 555f401..2290f83 100644
+--- a/scripts/csv_to_anki.py
++++ b/scripts/csv_to_anki.py
+@@ -1,7 +1,6 @@
+ import csv
+ import genanki
+ import sys
+-import os
+ import argparse
+ import re
+ 
+@@ -104,89 +103,191 @@ A_FMT = """
+ {{/Examples_HTML}}
+ """
+ 
++# Reverse Card HTML templates
++# Question: Show translations (Native language)
++Q_FMT_REVERSE = """
++<div class="translation-box">
++    <div class="translation">{{Translations}}</div>
++</div>
++"""
++
++# Answer: Show translations, then word, transcription, and examples
++A_FMT_REVERSE = """
++<div class="translation-box">
++    <div class="translation">{{Translations}}</div>
++</div>
++
++<hr id="answer">
++
++<div class="word">{{Infinitive}}</div>
++{{#Transcription}}
++<div class="transcription">{{Transcription}}</div>
++{{/Transcription}}
++
++{{#Examples_HTML}}
++<div class="examples-container">
++    {{Examples_HTML}}
++</div>
++{{/Examples_HTML}}
++"""
++
++
+ def create_model():
+     return genanki.Model(
+         MODEL_ID,
+-        'VocabMaster V3 (Dynamic)',
++        "VocabMaster V3 (Dynamic)",
+         fields=[
+-            {'name': 'Word'},           # 0: original input
+-            {'name': 'Infinitive'},     # 1: base form
+-            {'name': 'Transcription'},  # 2: IPA
+-            {'name': 'Translations'},   # 3: target lang
+-            {'name': 'Examples_HTML'},  # 4: All examples rendered as HTML
+-        ],
+-        templates=[
+-            {
+-                'name': 'Vocabulary Card',
+-                'qfmt': Q_FMT,
+-                'afmt': A_FMT,
+-            },
++            {"name": "Word"},  # 0: original input (Foreign word)
++            {"name": "Infinitive"},  # 1: base form (Foreign word)
++            {"name": "Transcription"},  # 2: IPA
++            {"name": "Translations"},  # 3: target lang (Native translations)
++            {"name": "Examples_HTML"},  # 4: All examples rendered as HTML
+         ],
+-        css=CSS
++        css=CSS,
+     )
+ 
++
+ def format_text(text):
+     """Converts #word# to <b>word</b> for Anki's HTML display."""
+     if not text:
+         return ""
+-    return re.sub(r'#([^#]+)#', r'<b>\1</b>', text)
++    return re.sub(r"#([^#]+)#", r"<b>\1</b>", text)
++
++
++def csv_to_apkg(input_file, output_file, deck_name, card_type_arg):
++    # 1. Determine card_type
++    card_type = card_type_arg
++    if card_type_arg == "foreign-native":
++        print("\nSelect card generation type:")
++        print("1. Foreign to Native (e.g., English word -> Russian translation)")
++        print("2. Native to Foreign (e.g., Russian translation -> English word)")
++        print("3. Bidirectional (both 1 and 2)")
++
++        while True:
++            choice = input("Enter your choice (1, 2, or 3): ").strip()
++            if choice == "1":
++                card_type = "foreign-native"
++                break
++            elif choice == "2":
++                card_type = "native-foreign"
++                break
++            elif choice == "3":
++                card_type = "bidirectional"
++                break
++            else:
++                print("Invalid choice. Please enter 1, 2, or 3.")
++
++    # 2. Build templates based on card_type
++    templates_to_use = []
++    if card_type == "foreign-native" or card_type == "bidirectional":
++        templates_to_use.append(
++            {
++                "name": "Vocabulary Card (Foreign to Native)",
++                "qfmt": Q_FMT,
++                "afmt": A_FMT,
++            }
++        )
++    if card_type == "native-foreign" or card_type == "bidirectional":
++        templates_to_use.append(
++            {
++                "name": "Vocabulary Card (Native to Foreign)",
++                "qfmt": Q_FMT_REVERSE,
++                "afmt": A_FMT_REVERSE,
++            }
++        )
+ 
+-def csv_to_apkg(input_file, output_file, deck_name):
+-    model = create_model()
++    # 3. Create Model
++    base_model_props = create_model()
++    model = genanki.Model(
++        base_model_props.model_id,
++        base_model_props.name,
++        fields=base_model_props.fields,
++        templates=templates_to_use,
++        css=base_model_props.css,
++    )
++
++    # 4. Create Deck
+     deck = genanki.Deck(DECK_ID, deck_name)
+-    
++
++    # 5. Process CSV and create notes
+     count = 0
+     try:
+-        with open(input_file, mode='r', encoding='utf-8-sig') as f:
+-            reader = csv.reader(f, delimiter=';')
++        with open(input_file, mode="r", encoding="utf-8-sig") as f:
++            reader = csv.reader(f, delimiter=";")
+             for row in reader:
+                 # New Format: word(infinitive);transcription;translations;ex1_en;ex1_ru;...
+                 if not row or len(row) < 3:
+                     continue
+-                
++
+                 # Build examples HTML
+                 examples_html = []
+                 # Examples start from index 3
+                 for i in range(3, len(row) - 1, 2):
+                     source = row[i]
+-                    translation = row[i+1] if i+1 < len(row) else ""
+-                    
++                    translation = row[i + 1] if i + 1 < len(row) else ""
++
+                     if not source and not translation:
+                         continue
+-                        
++
+                     if examples_html:
+                         examples_html.append('<div class="example-divider"></div>')
+-                    
+-                    examples_html.append(f'<div class="example-item">')
+-                    examples_html.append(f'  <div class="example-en">{format_text(source)}</div>')
+-                    examples_html.append(f'  <div class="example-ru">{format_text(translation)}</div>')
+-                    examples_html.append(f'</div>')
+-                
++
++                    examples_html.append('<div class="example-item">')
++                    examples_html.append(
++                        f'  <div class="example-en">{format_text(source)}</div>'
++                    )
++                    examples_html.append(
++                        f'  <div class="example-ru">{format_text(translation)}</div>'
++                    )
++                    examples_html.append("</div>")
++
+                 fields = [
+-                    row[0],             # Word (Front)
+-                    row[0],             # Infinitive (Back - same as word now)
+-                    row[1],             # Transcription
+-                    row[2],             # Translations
+-                    "".join(examples_html) # Examples_HTML
++                    row[0],  # Word (Front)
++                    row[0],  # Infinitive (Back - same as word now)
++                    row[1],  # Transcription
++                    row[2],  # Translations
++                    "".join(examples_html),  # Examples_HTML
+                 ]
+-                
++
++                # A single note will generate one or two cards based on the templates in the model
+                 note = genanki.Note(model=model, fields=fields)
+                 deck.add_note(note)
+                 count += 1
+-                
++
+         genanki.Package(deck).write_to_file(output_file)
+-        print(f"Successfully created {output_file} with {count} cards.")
+-        
++
++        # Adjust count for bidirectional cards for user feedback
++        final_card_count = count
++        if card_type == "bidirectional":
++            final_card_count *= 2
++
++        print(f"Successfully created {output_file} with {final_card_count} cards.")
++
+     except FileNotFoundError:
+         print(f"Error: File {input_file} not found.")
+     except Exception as e:
+-        print(f"An error occurred: {e}")
++        print(f"An error occurred: {e} - {type(e).__name__}")
++        sys.exit(1)
++
+ 
+ if __name__ == "__main__":
+-    parser = argparse.ArgumentParser(description="Convert VocabMaster CSV to Anki .apkg")
++    parser = argparse.ArgumentParser(
++        description="Convert VocabMaster CSV to Anki .apkg"
++    )
+     parser.add_argument("input", help="Path to input CSV file")
+-    parser.add_argument("-o", "--output", help="Path to output .apkg file", default="vocab_deck.apkg")
+-    parser.add_argument("-n", "--name", help="Anki deck name", default="VocabMaster Deck")
+-    
++    parser.add_argument(
++        "-o", "--output", help="Path to output .apkg file", default="vocab_deck.apkg"
++    )
++    parser.add_argument(
++        "-n", "--name", help="Anki deck name", default="VocabMaster Deck"
++    )
++    parser.add_argument(
++        "-t",
++        "--card-type",
++        choices=["foreign-native", "native-foreign", "bidirectional"],
++        default="foreign-native",
++        help="Type of cards to generate: 'foreign-native' (default), 'native-foreign', or 'bidirectional'. If not provided, an interactive menu will appear.",
++    )
++
+     args = parser.parse_args()
+-    csv_to_apkg(args.input, args.output, args.name)
++    csv_to_apkg(args.input, args.output, args.name, args.card_type)
+diff --git a/tests/__init__.py b/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/tests/backend/test_main.py b/tests/backend/test_main.py
+index 1aca619..e55ef3d 100644
+--- a/tests/backend/test_main.py
++++ b/tests/backend/test_main.py
+@@ -1,30 +1,41 @@
+ import pytest
+-from backend.main import clean_csv_field, parse_word_with_context, get_prompt_template, app
++from backend.main import (
++    clean_csv_field,
++    parse_word_with_context,
++    get_prompt_template,
++    app,
++    extract_data_line,
++    format_error_response,
++)
+ from fastapi.testclient import TestClient
+-import re
+ 
+ client = TestClient(app)
+ 
++
+ def test_clean_csv_field():
+     assert clean_csv_field("hello") == "hello"
+     assert clean_csv_field("hello\nworld") == "hello world"
+     assert clean_csv_field('He said "Hi"') == 'He said ""Hi""'
+     assert clean_csv_field("  spaces  ") == "spaces"
+-    assert clean_csv_field("multiple\n\nnewlines") == "multiple newlines" # re.sub(r'\s+', ' ', ...)
++    assert (
++        clean_csv_field("multiple\n\nnewlines") == "multiple newlines"
++    )  # re.sub(r'\s+', ' ', ...)
++
+ 
+ def test_parse_word_with_context():
+     # Rule 1: Text outside brackets
+     assert parse_word_with_context("[context] word") == ("word", "context")
+     assert parse_word_with_context("word [context]") == ("word", "context")
+     assert parse_word_with_context("[ctx1] word [ctx2]") == ("word", "ctx1 ... ctx2")
+-    
++
+     # Rule 2: Entire string bracketed
+     assert parse_word_with_context("[word]") == ("word", None)
+     assert parse_word_with_context("[word][context]") == ("word", "context")
+-    
++
+     # No brackets
+     assert parse_word_with_context("plain word") == ("plain word", None)
+ 
++
+ def test_get_prompt_template_fallback(tmp_path, monkeypatch):
+     # Mock PROMPTS_DIR
+     prompts_dir = tmp_path / "prompts"
+@@ -32,24 +43,123 @@ def test_get_prompt_template_fallback(tmp_path, monkeypatch):
+     (prompts_dir / "prompt.txt").write_text("default")
+     (prompts_dir / "prompt_German.txt").write_text("german_source")
+     (prompts_dir / "prompt_German_Russian.txt").write_text("german_russian_pair")
+-    
++
+     monkeypatch.setattr("backend.main.PROMPTS_DIR", str(prompts_dir))
+     monkeypatch.setattr("backend.main.DEFAULT_PROMPT_TEMPLATE", "default")
+ 
+     # 1. Full pair match
+     assert get_prompt_template("German", "Russian") == "german_russian_pair"
+-    
++
+     # 2. Source only match
+     assert get_prompt_template("German", "English") == "german_source"
+-    
++
+     # 3. Default fallback
+     assert get_prompt_template("French", "Russian") == "default"
+ 
++
+ def test_health_check():
+     response = client.get("/health")
+     assert response.status_code == 200
+     assert response.json() == {"status": "healthy"}
+ 
++
+ def test_process_words_invalid_request():
+-    response = client.post("/process-words", json={"text": "", "source_lang": "En", "target_lang": "Ru"})
+-    assert response.status_code == 422 # Pydantic validation error for min_length=1
++    response = client.post(
++        "/process-words", json={"text": "", "source_lang": "En", "target_lang": "Ru"}
++    )
++    assert response.status_code == 422  # Pydantic validation error for min_length=1
++
++
++def test_extract_data_line_no_examples():
++    """Test extract_data_line with zero examples."""
++    stdout = """
++    ```json
++    {
++        "infinitive": "was ist das?",
++        "transcription": "[vas ɪst das]",
++        "translations": ["what is that?"],
++        "examples": []
++    }
++    ```
++    """
++    raw_word = "was ist das?"
++    parsed_word = "was ist das?"
++    expected_csv = '"was ist das?";"[vas ɪst das]";"what is that?";"was ist das?"'  # infinitive;transcription;translations;id_raw
++    assert extract_data_line(stdout, raw_word, parsed_word) == expected_csv
++
++
++def test_extract_data_line_one_example():
++    """Test extract_data_line with one example."""
++    stdout = """
++    ```json
++    {
++        "infinitive": "run",
++        "transcription": "[rʌn]",
++        "translations": ["бежать"],
++        "examples": [
++            {"source": "I #run#.", "translation": "Я #бегаю#."}
++        ]
++    }
++    ```
++    """
++    raw_word = "run"
++    parsed_word = "run"
++    expected_csv = '"run";"[rʌn]";"бежать";"I #run#.";"Я #бегаю#.";"run"'  # infinitive;transcription;translations;source1;translation1;id_raw
++    assert extract_data_line(stdout, raw_word, parsed_word) == expected_csv
++
++
++def test_extract_data_line_two_examples():
++    """Test extract_data_line with two examples."""
++    stdout = """
++    ```json
++    {
++        "infinitive": "obnoxious",
++        "transcription": "[əbˈnɒkʃəs]",
++        "translations": ["неприятный"],
++        "examples": [
++            {"source": "He is #obnoxious#.", "translation": "Он #неприятный#."},
++            {"source": "That was #obnoxious#.", "translation": "Это было #отвратительно#."}
++        ]
++    }
++    ```
++    """
++    raw_word = "obnoxious"
++    parsed_word = "obnoxious"
++    expected_csv = '"obnoxious";"[əbˈnɒkʃəs]";"неприятный";"He is #obnoxious#.";"Он #неприятный#.";"That was #obnoxious#.";"Это было #отвратительно#.";"obnoxious"'  # infinitive;transcription;translations;source1;translation1;source2;translation2;id_raw
++    assert extract_data_line(stdout, raw_word, parsed_word) == expected_csv
++
++
++def test_extract_data_line_typo_correction():
++    """Test extract_data_line with typo correction in infinitive."""
++    stdout = """
++    ```json
++    {
++        "infinitive": "obnoxious",
++        "transcription": "[əbˈnɒkʃəs]",
++        "translations": ["неприятный"],
++        "examples": []
++    }
++    ```
++    """
++    raw_word = "obnoxius"
++    parsed_word = "obnoxius"
++    expected_csv = '"obnoxious";"[əbˈnɒkʃəs]";"неприятный";"obnoxius"'  # infinitive;transcription;translations;id_raw
++    assert extract_data_line(stdout, raw_word, parsed_word) == expected_csv
++
++
++def test_extract_data_line_malformed_json():
++    """Test extract_data_line with malformed JSON output from model."""
++    stdout = "This is not JSON at all."
++    raw_word = "test"
++    parsed_word = "test"
++    with pytest.raises(ValueError, match="No JSON object found in output"):
++        extract_data_line(stdout, raw_word, parsed_word)
++
++
++def test_format_error_response():
++    """Test format_error_response."""
++    raw_word = "invalid"
++    error_message = "Some error occurred"
++    # Format: Display;"[error]";"[ERROR]: ...";ID
++    expected_csv = '"invalid";"[error]";"[ERROR]: Some error occurred";"invalid"'
++    assert format_error_response(raw_word, error_message) == expected_csv
+diff --git a/tests/scripts/test_anki.py b/tests/scripts/test_anki.py
+index 62eddc6..aec52a0 100644
+--- a/tests/scripts/test_anki.py
++++ b/tests/scripts/test_anki.py
+@@ -1,7 +1,6 @@
+-import pytest
+-import re
+ from scripts.csv_to_anki import format_text
+ 
++
+ def test_format_text():
+     assert format_text("Hello #world#") == "Hello <b>world</b>"
+     assert format_text("No hashtags") == "No hashtags"
+diff --git a/tests/test_backend_splitting.py b/tests/test_backend_splitting.py
+index 8f2cee8..002696e 100644
+--- a/tests/test_backend_splitting.py
++++ b/tests/test_backend_splitting.py
+@@ -2,10 +2,11 @@ import sys
+ import os
+ 
+ # Add backend to path to import main
+-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
++sys.path.append(os.path.join(os.path.dirname(__file__), "..", "backend"))
+ 
+ from main import split_text_respecting_brackets
+ 
++
+ def test_splitting():
+     test_cases = [
+         ("word1, word2", ["word1", "word2"]),
+@@ -18,15 +19,20 @@ def test_splitting():
+ 
+     for input_txt, expected in test_cases:
+         result = split_text_respecting_brackets(input_txt)
+-        assert result == expected, f"Failed for '{input_txt}': expected {expected}, got {result}"
++        assert result == expected, (
++            f"Failed for '{input_txt}': expected {expected}, got {result}"
++        )
+         print(f"PASS: '{input_txt}' -> {result}")
+ 
++
+ if __name__ == "__main__":
+     try:
+         test_splitting()
+         print("All backend splitting tests passed!")
+     except ImportError:
+-        print("Could not import backend.main. Ensure you are running this from the project root.")
++        print(
++            "Could not import backend.main. Ensure you are running this from the project root."
++        )
+     except Exception as e:
+         print(f"Test failed: {e}")
+         sys.exit(1)

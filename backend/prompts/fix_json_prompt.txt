@@ -1,6 +1,15 @@
-The following text is a corrupted JSON object that was returned from an API. Please fix it and return only the corrected, valid JSON object. Do not provide any explanation or surrounding text. Just the JSON.
+An API returned the following text, which is a corrupted or incomplete JSON object. Your task is to repair it so it conforms to the specified schema.
 
-Corrupted JSON:
+Return ONLY the corrected, valid JSON object. Provide no explanation or surrounding text.
+
+**JSON Schema Rules:**
+The JSON object must have the following fields:
+- "infinitive": A string. Can be in the format "corrected_word (from 'original_word')".
+- "transcription": A string, or the value "N/A".
+- "translations": A list of strings.
+- "examples": A list of objects. Each object must have "source" and "translation" keys. This list can be empty (`[]`).
+
+**Corrupted JSON:**
 ```
 {broken_output}
 ```

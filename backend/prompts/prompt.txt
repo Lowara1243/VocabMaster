@@ -1,14 +1,64 @@
-{context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
-- "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form).
-- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
-- "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
-- "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
+{context_prompt}Analyze the word/phrase "{word}" from the {source_lang} language. Your task is to provide a detailed analysis in a strict JSON format.
 
-Important rules:
-- The provided word/phrase is in {source_lang}. You MUST treat it as a {source_lang} word/phrase. Do not guess the language.
-- If word/phrase doesn't exist or you're uncertain: set transcription to "N/A"
-- For multi-word phrases like "give up", highlight the entire phrase: #give up#
-- Provide up to 3 examples when possible
-- Return ONLY valid JSON, no markdown blocks, no additional text
+First, determine if "{word}" has a minor spelling error. If it does, correct it to the most likely intended word. This correction should only apply to clear typos and not alter words based on diacritics or accents, as these are crucial for word meaning in {source_lang}. All subsequent fields in the JSON should be based on this CORRECTED word.
 
-Example: {{"infinitive": "obnoxious", "transcription": "[əbˈnɒkʃəs]", "translations": ["неприятный", "отвратительный"], "examples": [{{"source": "His #obnoxious# behavior annoyed everyone.", "translation": "Его #отвратительное# поведение раздражало всех."}}, {{"source": "She found his jokes #obnoxious#.", "translation": "Она находила его шутки #отвратительными#."}}]}}
+Provide ONLY a single, valid JSON object with the following fields:
+
+- "infinitive": string. The base or dictionary form of the word.
+    - If you corrected a spelling error, provide ONLY the corrected word. Do NOT include phrases like "(from '...')".
+    - Otherwise, just provide the base form of the word.
+- "transcription": string. The IPA transcription (e.g., [trænˈskrɪpʃən]). If the word cannot be transcribed (e.g., it's a proper noun, abbreviation, or does not exist), use "N/A".
+    - **TRANSCRIPTION STYLE:** Use simplified IPA. DO NOT use syllable breaks (the dot `.`) or tie bars (the arch `͡` like in `t͡ʃ`). For example, use [tʃac] instead of [ˈza.t͡ʃac].
+- "translations": list of strings. Provide common translations into {target_lang}.
+- "examples": list of objects. Each object must have two keys: "source" (a {source_lang} sentence) and "translation" (its {target_lang} translation).
+    - If the input "{word}" is already a complete sentence or phrase where examples would not be useful (like "How are you?"), provide an empty list: `[]`.
+    - Otherwise, provide one or two useful examples.
+    - In the "source" sentence, highlight the relevant form of the word with hash symbols (e.g., #word#).
+
+**CRITICAL RULES:**
+- Your entire output MUST be only the JSON object. No extra text, no apologies, no markdown `json` tags.
+- All translations for examples MUST be complete sentences in the {target_lang}. Do not leave any words from the source language untranslated in the example translation.
+- If the word is nonsensical or cannot be found, return a JSON with "transcription" as "N/A" and empty lists for "translations" and "examples".
+- **NEVER** include the original input word in the "infinitive" field if it was a typo (e.g., use "word" NOT "word (from 'wrd')").
+
+**Example 1 (Input: "run", Source: English, Target: Russian):**
+{{
+    "infinitive": "run",
+    "transcription": "[rʌn]",
+    "translations": ["бежать", "управлять", "работать"],
+    "examples": [
+        {{
+            "source": "I can #run# a mile in five minutes.",
+            "translation": "Я могу #пробежать# милю за пять минут."
+        }},
+        {{
+            "source": "She #runs# a successful company.",
+            "translation": "Она #управляет# успешной компанией."
+        }}
+    ]
+}}
+
+**Example 2 (Input: "obnoxius", Source: English, Target: Russian):**
+{{
+    "infinitive": "obnoxious",
+    "transcription": "[əbˈnɒkʃəs]",
+    "translations": ["неприятный", "отвратительный"],
+    "examples": [
+        {{
+            "source": "He has some #obnoxious# habits.",
+            "translation": "У него есть несколько #неприятных# привычек."
+        }},
+        {{
+            "source": "What an #obnoxious# man!",
+            "translation": "Какой #неприятный# человек!"
+        }}
+    ]
+}}
+
+**Example 3 (Input: "was ist das?", Source: German, Target: English):**
+{{
+    "infinitive": "was ist das?",
+    "transcription": "[vas ɪst das]",
+    "translations": ["what is that?"],
+    "examples": []
+}}

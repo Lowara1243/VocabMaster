@@ -10,4 +10,5 @@ export const languages = [
   'Portuguese',
   'Russian',
   'Spanish',
+  'Slovak',
 ];

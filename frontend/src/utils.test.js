@@ -52,6 +52,27 @@ describe('Utility Functions', () => {
             expect(parsed.examples[0].source).toBe('<strong>Hallo</strong>, wie geht es dir?');
         });
 
+        it('should parse a CSV line with zero examples correctly', () => {
+            const csvLine = '"was ist das?";"[vas ɪst das]";"what is that?";"was ist das?"';
+            const parsed = parseCsvLine(csvLine);
+            expect(parsed.word).toBe('was ist das?');
+            expect(parsed.transcription).toBe('[vas ɪst das]');
+            expect(parsed.translation).toBe('what is that?');
+            expect(parsed.examples).toEqual([]);
+            expect(parsed.status).toBeUndefined(); // Or 'processed' if that's the default
+        });
+
+        it('should parse an error CSV line with the new [ERROR]: prefix', () => {
+            const csvLine = '"miesto";"";"[ERROR]: API capacity exhausted. Please try again later.";"miesto"';
+            const parsed = parseCsvLine(csvLine);
+            expect(parsed.word).toBe('miesto');
+            expect(parsed.transcription).toBe(''); // Empty, as per format_error_response
+            expect(parsed.translation).toBe('[ERROR]: API capacity exhausted. Please try again later.');
+            expect(parsed.examples).toEqual([]);
+            expect(parsed.status).toBe('error');
+            expect(parsed.originalWord).toBe('miesto');
+        });
+
         it('should create a CSV line correctly', () => {
             const fields = ['word', 'trans', 'IPA', 'source', 'target'];
             const line = createCsvLine(fields);

@@ -11,7 +11,7 @@ A client-server application for obtaining detailed information about English wor
 
 - Processing of individual words and phrases (e.g., "look for")
 - Context support for more accurate translations (e.g., `[a piece of furniture] table`)
-- Support for 10 popular languages with language-specific rules:
+- Support for 11 popular languages with language-specific rules:
   - **German nouns**: Automatically includes definite articles and plural forms (e.g., "Apfel" → "der Apfel (die Äpfel)")
   - **English verbs**: Automatically adds the "to" particle (e.g., "go" → "to go")
 - Real-time streaming results (asynchronous processing) with concurrency control

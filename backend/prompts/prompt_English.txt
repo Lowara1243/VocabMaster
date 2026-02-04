@@ -1,6 +1,6 @@
 {context_prompt}For the word/phrase "{word}", which is in {source_lang}, provide ONLY a JSON object:
 - "infinitive": The base or dictionary form of the word in {source_lang} (e.g., for a verb, its infinitive form). If it's a verb, add the particle "to" (e.g., "go" -> "to go").
-- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use the "infinitive".
+- "transcription": IPA in format [example]. If word doesn't exist, is misspelled, or unknown, use "N/A". Use simplified IPA: DO NOT use syllable breaks (.) or tie bars (͡). Use the "infinitive".
 - "translations": list of {target_lang} translations for the "infinitive" form (all common meanings, can be 1 or more)
 - "examples": list of at least 2 examples with "source" and "translation" keys. In the "source" text, you can use other forms of the word/phrase. Highlight the used form with # symbols.
 

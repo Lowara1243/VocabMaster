@@ -75,8 +75,8 @@ function App() {
           setResults(prevResults => {
             const updatedResults = prevResults.map(r => {
               if (r.originalWord === parsedResult.originalWord) {
-                if (parsedResult.transcription === '[error]') {
-                  return { ...r, status: 'error', error: parsedResult.word };
+                if (parsedResult.transcription === '[error]' || parsedResult.status === 'error') {
+                  return { ...r, status: 'error', error: parsedResult.translation };
                 }
                 const isNotFound = parsedResult.transcription === 'N/A';
                 if (!isNotFound) {
